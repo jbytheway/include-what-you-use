@@ -63,6 +63,7 @@ class OneIwyuTest(unittest.TestCase):
     flags_map = {
       'backwards_includes.cc': [self.CheckAlsoExtension('-d*.h')],
       'badinc.cc': [self.MappingFile('badinc.imp')],
+      'builtin_with_mapping.cc': [self.MappingFile('builtin_with_mapping.imp')],
       'check_also.cc': [self.CheckAlsoExtension('-d1.h')],
       'implicit_ctor.cc': [self.CheckAlsoExtension('-d1.h')],
       'iwyu_stricter_than_cpp.cc': [self.CheckAlsoExtension('-autocast.h'),
@@ -122,6 +123,7 @@ class OneIwyuTest(unittest.TestCase):
       'backwards_includes.cc': ['.'],
       'badinc.cc': ['.'],
       'badinc-extradef.cc': ['.'],
+      'builtin_with_mapping.cc': ['.'],
       'funcptrs.cc': ['.'],
       'casts.cc': ['.'],
       'catch.cc': ['.'],

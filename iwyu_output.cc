@@ -1069,6 +1069,28 @@ void ProcessFullUse(OneUse* use,
   if (use->ignore_use())   // we're already ignoring it
     return;
 
+  // In some cases we might be tempted to ignore a use based on the apparent
+  // location of its declaration, but when there is a mapping defined for the
+  // symbol, we should respect that instead.  So, we need to determine whether
+  // the symbol has any mappings.
+  // However, to avoid cyclic includes we must only count files that do not
+  // include this one.
+  // This whole process is moderately slow, so we do it lazily.
+  auto symbol_has_no_mappings = [&]() {
+    for (const std::string& public_file :
+        GlobalIncludePicker().
+          GetCandidateHeadersForSymbol(use->symbol_name())) {
+      const FileEntry* public_file_entry =
+        preprocessor_info->IncludeToFileEntry(public_file);
+      if (public_file_entry == nullptr ||
+          !preprocessor_info->FileTransitivelyIncludes(
+            public_file_entry, GetFileEntry(use->use_loc()))) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   // (B1) If the definition is after the use, re-point to a prior decl.
   // If iwyu followed the language precisely, this wouldn't be
   // necessary: code wouldn't compile if a full-use didn't have the
@@ -1113,7 +1135,7 @@ void ProcessFullUse(OneUse* use,
   // All this is moot when FunctionDecls are being defined, all their redecls
   // are separately registered as uses so that a definition anchors all its
   // declarations.
-  if (!use->is_function_being_defined()) {
+  if (!use->is_function_being_defined() && symbol_has_no_mappings()) {
     set<const NamedDecl*> all_redecls;
     if (isa<RecordDecl>(use->decl()) || isa<ClassTemplateDecl>(use->decl()))
       all_redecls.insert(use->decl());  // for classes, just consider the dfn
@@ -1141,7 +1163,8 @@ void ProcessFullUse(OneUse* use,
   // A compiler builtin without a predefined header file (e.g. __builtin_..)
   if (const clang::IdentifierInfo* iden = use->decl()->getIdentifier()) {
     if (iden->getBuiltinID() != 0 &&
-        !clang::Builtin::Context::isBuiltinFunc(use->symbol_name().c_str())) {
+        !clang::Builtin::Context::isBuiltinFunc(use->symbol_name().c_str()) &&
+        symbol_has_no_mappings()) {
       VERRS(6) << "Ignoring use of " << use->symbol_name()
                << " (" << use->PrintableUseLoc() << "): built-in function\n";
       use->set_ignore_use();
@@ -1208,7 +1231,8 @@ void ProcessFullUse(OneUse* use,
   // the language requires).
   // TODO(csilvers): remove this when we resolve the bugs with macros/typedefs.
   if (preprocessor_info->FileTransitivelyIncludes(
-          GetFileEntry(use->decl()), GetFileEntry(use->use_loc()))) {
+          GetFileEntry(use->decl()), GetFileEntry(use->use_loc())) &&
+      symbol_has_no_mappings()) {
     VERRS(6) << "Ignoring use of " << use->symbol_name()
              << " (" << use->PrintableUseLoc() << "): 'backwards' #include\n";
     use->set_ignore_use();
